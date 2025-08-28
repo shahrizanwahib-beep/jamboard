@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papan Putih Interaktif (Jamboard Style)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        #board {
+            touch-action: none;
+            background-color: #f3f4f6;
+            background-image: radial-gradient(#d1d5db 1px, transparent 1px);
+            background-size: 20px 20px;
+            cursor: default;
+        }
+        .tool-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        .board-element {
+            position: absolute;
+            cursor: grab;
+        }
+        .board-element:active {
+            cursor: grabbing;
+        }
+        #board[data-tool="eraser"] .board-element {
+            cursor: crosshair;
+        }
+        .sticky-note {
+            width: 150px;
+            height: 150px;
+            padding: 10px;
+            background-color: #fef9c3; /* yellow-100 */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid #fde047; /* yellow-400 */
+            font-size: 14px;
+            resize: both;
+            overflow: hidden;
+            white-space: pre-wrap; /* Ensure newlines are respected */
+        }
+        .sticky-note:focus {
+            outline: 2px solid #3b82f6;
+        }
+        .modal {
+            animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col h-screen overflow-hidden">
+
+    <!-- Name Input Modal -->
+    <div id="name-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 modal">
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center w-full max-w-sm">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">Selamat Datang!</h2>
+            <p class="text-gray-600 mb-6">Sila masukkan nama anda untuk menyertai papan perbincangan.</p>
+            <input id="name-input" type="text" placeholder="Nama anda" class="w-full p-3 border-2 border-gray-300 rounded-lg text-lg text-center mb-4 focus:border-blue-500 focus:ring-blue-500">
+            <button id="submit-name" class="w-full bg-blue-500 text-white font-bold py-3 rounded-lg text-xl hover:bg-blue-600 transition-colors">Masuk</button>
+        </div>
+    </div>
+
+    <header class="bg-white shadow p-2 text-center flex-shrink-0">
+        <h1 class="text-xl font-bold text-gray-800">Papan Perbincangan Interaktif</h1>
+    </header>
+
+    <main class="flex-grow flex p-2 gap-2">
+        <!-- Toolbar -->
+        <div id="toolbar" class="bg-white rounded-lg shadow p-3 flex flex-col items-center gap-4">
+            <button class="tool-btn p-3 rounded-lg hover:bg-gray-200 active" data-tool="select" title="Pilih & Gerak">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11" /></svg>
+            </button>
+            <button class="tool-btn p-3 rounded-lg hover:bg-gray-200" data-tool="note" title="Nota Lekat">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+            </button>
+            <button class="tool-btn p-3 rounded-lg hover:bg-gray-200" data-tool="eraser" title="Padam">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.406 4.594a2.25 2.25 0 00-3.182 0l-10 10a2.25 2.25 0 000 3.182l4.406 4.406a2.25 2.25 0 003.182 0l10-10a2.25 2.25 0 000-3.182l-4.406-4.406zM6.75 16.5l10.5-10.5" /></svg>
+            </button>
+            <button data-action="clear" class="p-3 rounded-lg bg-red-500 text-white hover:bg-red-600" title="Kosongkan Papan">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
+        </div>
+
+        <!-- Board -->
+        <div id="board" class="flex-grow rounded-lg shadow-inner overflow-hidden relative">
+            <!-- Elements will be added here by Firebase -->
+        </div>
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, addDoc, serverTimestamp, updateDoc, deleteDoc, getDocs, writeBatch, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "DEMO", authDomain: "DEMO", projectId: "DEMO" };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'jamboard-app';
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        const board = document.getElementById('board');
+        const toolbar = document.getElementById('toolbar');
+        const nameModal = document.getElementById('name-modal');
+        const nameInput = document.getElementById('name-input');
+        const submitNameBtn = document.getElementById('submit-name');
+
+        let studentName = '';
+        let activeTool = 'select';
+        let isDragging = false;
+        let selectedElement = null;
+        let offset = { x: 0, y: 0 };
+        let allNotesData = []; // Menyimpan data nota sedia ada
+        
+        const boardId = 'main-board';
+        const elementsCollection = collection(db, `artifacts/${appId}/public/data/boards/${boardId}/elements`);
+
+        function setTool(tool) {
+            activeTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.tool-btn[data-tool="${tool}"]`).classList.add('active');
+            board.dataset.tool = tool;
+            
+            if (tool === 'note') {
+                board.style.cursor = 'copy';
+            } else {
+                board.style.cursor = 'default';
+            }
+        }
+
+        function renderElement(elementData) {
+            let el = document.getElementById(elementData.id);
+            if (!el) {
+                el = document.createElement('textarea');
+                el.className = 'board-element sticky-note';
+                el.addEventListener('input', (e) => updateElementInFirestore(elementData.id, { content: e.target.value }));
+                el.id = elementData.id;
+                board.appendChild(el);
+            }
+            
+            el.value = elementData.content;
+            el.style.left = `${elementData.x}px`;
+            el.style.top = `${elementData.y}px`;
+            el.style.width = `${elementData.width || 150}px`;
+            el.style.height = `${elementData.height || 150}px`;
+        }
+        
+        async function addElementToFirestore(data) {
+            await addDoc(elementsCollection, { ...data, timestamp: serverTimestamp() });
+        }
+
+        async function updateElementInFirestore(id, data) {
+            const docRef = doc(db, `artifacts/${appId}/public/data/boards/${boardId}/elements`, id);
+            await updateDoc(docRef, data);
+        }
+
+        async function deleteElementFromFirestore(id) {
+            const docRef = doc(db, `artifacts/${appId}/public/data/boards/${boardId}/elements`, id);
+            await deleteDoc(docRef);
+        }
+
+        function checkOverlap(newRect, existingNotesData) {
+            for (const noteData of existingNotesData) {
+                const existingRect = {
+                    left: noteData.x,
+                    top: noteData.y,
+                    right: noteData.x + (noteData.width || 150),
+                    bottom: noteData.y + (noteData.height || 150)
+                };
+
+                if (newRect.x < existingRect.right &&
+                    newRect.x + newRect.width > existingRect.left &&
+                    newRect.y < existingRect.bottom &&
+                    newRect.y + newRect.height > existingRect.top) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function findOpenPosition(startX, startY) {
+            let x = startX;
+            let y = startY;
+            const noteWidth = 150;
+            const noteHeight = 150;
+            const margin = 10;
+            
+            let newRect = { x, y, width: noteWidth, height: noteHeight };
+            let safetyCounter = 0;
+
+            while (checkOverlap(newRect, allNotesData) && safetyCounter < 100) {
+                x += noteWidth + margin;
+                if (x + noteWidth > board.clientWidth) {
+                    x = 10;
+                    y += noteHeight + margin;
+                }
+                newRect = { x, y, width: noteWidth, height: noteHeight };
+                safetyCounter++;
+            }
+            return { x, y };
+        }
+
+        board.addEventListener('mousedown', async (e) => {
+            const target = e.target.closest('.board-element');
+            if (activeTool === 'select' && target) {
+                isDragging = true;
+                selectedElement = target;
+                const rect = target.getBoundingClientRect();
+                const boardRect = board.getBoundingClientRect();
+                offset.x = e.clientX - rect.left + boardRect.left;
+                offset.y = e.clientY - rect.top + boardRect.top;
+            } else if (activeTool === 'note') {
+                const q = query(elementsCollection, where("owner", "==", studentName), where("type", "==", "note"));
+                const querySnapshot = await getDocs(q);
+                if (querySnapshot.size >= 3) {
+                    alert("Anda telah mencapai had maksimum 3 nota.");
+                    return;
+                }
+
+                const { x, y } = findOpenPosition(e.offsetX, e.offsetY);
+                addElementToFirestore({
+                    type: 'note',
+                    owner: studentName,
+                    content: `Nota oleh ${studentName}:\n`,
+                    x: x,
+                    y: y,
+                    width: 150,
+                    height: 150
+                });
+            } else if (activeTool === 'eraser' && target) {
+                deleteElementFromFirestore(target.id);
+            }
+        });
+
+        board.addEventListener('mousemove', (e) => {
+            if (isDragging && selectedElement) {
+                const x = e.pageX - offset.x;
+                const y = e.pageY - offset.y;
+                selectedElement.style.left = `${x}px`;
+                selectedElement.style.top = `${y}px`;
+                updateElementInFirestore(selectedElement.id, { x, y });
+            }
+        });
+
+        board.addEventListener('mouseup', () => {
+            isDragging = false;
+            selectedElement = null;
+        });
+
+        toolbar.addEventListener('click', (e) => {
+            const target = e.target.closest('button');
+            if (!target) return;
+
+            if (target.dataset.tool) {
+                setTool(target.dataset.tool);
+            }
+            if (target.dataset.action === 'clear') {
+                if (!confirm("Adakah anda pasti mahu memadam semua kandungan?")) return;
+                getDocs(elementsCollection).then(snapshot => {
+                    const batch = writeBatch(db);
+                    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                    batch.commit();
+                });
+            }
+        });
+        
+        submitNameBtn.addEventListener('click', () => {
+            const name = nameInput.value.trim();
+            if (name) {
+                studentName = name;
+                nameModal.style.display = 'none';
+            } else {
+                alert('Sila masukkan nama anda.');
+            }
+        });
+
+        onSnapshot(elementsCollection, (snapshot) => {
+            allNotesData = []; // Kosongkan senarai nota sedia ada
+            snapshot.docChanges().forEach((change) => {
+                const data = { id: change.doc.id, ...change.doc.data() };
+                if (data.type === 'note') {
+                    const index = allNotesData.findIndex(n => n.id === data.id);
+                    if (change.type === "added") {
+                        allNotesData.push(data);
+                    } else if (change.type === "modified") {
+                        if (index > -1) allNotesData[index] = data;
+                    } else if (change.type === "removed") {
+                        if (index > -1) allNotesData.splice(index, 1);
+                    }
+                }
+
+                if (change.type === "added" || change.type === "modified") {
+                    if(data.type === 'note') renderElement(data);
+                }
+                if (change.type === "removed") {
+                    const el = document.getElementById(change.doc.id);
+                    if (el) el.remove();
+                }
+            });
+        });
+
+        onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    signInAnonymously(auth);
+                }
+            }
+        });
+
+        setTool('select'); // Set default tool
+    </script>
+</body>
+</html>
+
